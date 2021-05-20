@@ -18,7 +18,7 @@
 
 package org.apache.flink.runtime.io.network.buffer;
 
-import org.apache.flink.core.memory.MemorySegmentFactory;
+import org.apache.flink.core.memory.MemorySegment;
 
 import org.junit.Test;
 
@@ -28,6 +28,7 @@ import java.nio.ByteBuffer;
 import java.nio.IntBuffer;
 import java.util.ArrayList;
 
+import static org.apache.flink.core.memory.MemorySegmentFactory.allocateUnpooledSegment;
 import static org.apache.flink.runtime.io.network.buffer.BufferBuilderTestUtils.buildSingleBuffer;
 import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
@@ -45,6 +46,8 @@ public class BufferBuilderAndConsumerTest {
         BufferConsumer bufferConsumer = bufferBuilder.createBufferConsumer();
 
         assertEquals(3 * Integer.BYTES, bufferBuilder.appendAndCommit(toByteBuffer(1, 2, 3)));
+
+        bufferBuilder.recycle();
 
         Buffer buffer = bufferConsumer.build();
         assertFalse(buffer.isRecycled());
@@ -220,6 +223,45 @@ public class BufferBuilderAndConsumerTest {
         assertEquals(0, bufferBuilder.getWritableBytes());
     }
 
+    @Test
+    public void recycleWithoutConsumer() {
+        // given: Recycler with the counter of recycle invocation.
+        CountedRecycler recycler = new CountedRecycler();
+        BufferBuilder bufferBuilder =
+                new BufferBuilder(
+                        new NetworkBuffer(allocateUnpooledSegment(BUFFER_SIZE), recycler));
+
+        // when: Invoke the recycle.
+        bufferBuilder.recycle();
+
+        // then: Recycling successfully finished.
+        assertEquals(1, recycler.recycleInvocationCounter);
+    }
+
+    @Test
+    public void recycleConsumerAndBufferBuilder() {
+        // given: Recycler with the counter of recycling invocation.
+        CountedRecycler recycler = new CountedRecycler();
+        BufferBuilder bufferBuilder =
+                new BufferBuilder(
+                        new NetworkBuffer(allocateUnpooledSegment(BUFFER_SIZE), recycler));
+
+        // and: One buffer consumer.
+        BufferConsumer bufferConsumer = bufferBuilder.createBufferConsumer();
+
+        // when: Invoke the recycle of BufferBuilder.
+        bufferBuilder.recycle();
+
+        // then: Nothing happened because BufferBuilder has already consumer.
+        assertEquals(0, recycler.recycleInvocationCounter);
+
+        // when: Close the consumer.
+        bufferConsumer.close();
+
+        // then: Recycling successfully finished.
+        assertEquals(1, recycler.recycleInvocationCounter);
+    }
+
     private static void testIsFinished(int writes) {
         BufferBuilder bufferBuilder = createBufferBuilder();
         BufferConsumer bufferConsumer = bufferBuilder.createBufferConsumer();
@@ -283,7 +325,17 @@ public class BufferBuilderAndConsumerTest {
 
     private static BufferBuilder createBufferBuilder() {
         return new BufferBuilder(
-                MemorySegmentFactory.allocateUnpooledSegment(BUFFER_SIZE),
-                FreeingBufferRecycler.INSTANCE);
+                new NetworkBuffer(
+                        allocateUnpooledSegment(BUFFER_SIZE), FreeingBufferRecycler.INSTANCE));
+    }
+
+    private static class CountedRecycler implements BufferRecycler {
+        int recycleInvocationCounter;
+
+        @Override
+        public void recycle(MemorySegment memorySegment) {
+            recycleInvocationCounter++;
+            memorySegment.free();
+        }
     }
 }

@@ -19,6 +19,7 @@ package org.apache.flink.streaming.runtime.io.recovery;
 
 import org.apache.flink.api.common.typeutils.base.LongSerializer;
 import org.apache.flink.core.memory.DataOutputSerializer;
+import org.apache.flink.core.memory.MemorySegment;
 import org.apache.flink.runtime.checkpoint.InflightDataRescalingDescriptor;
 import org.apache.flink.runtime.checkpoint.channel.InputChannelInfo;
 import org.apache.flink.runtime.io.disk.iomanager.IOManager;
@@ -57,6 +58,7 @@ import java.util.concurrent.ThreadLocalRandom;
 import java.util.stream.Collectors;
 
 import static java.util.Collections.emptySet;
+import static org.apache.flink.core.memory.MemorySegmentFactory.allocateUnpooledSegment;
 import static org.apache.flink.runtime.checkpoint.InflightDataRescalingDescriptorUtil.array;
 import static org.apache.flink.runtime.checkpoint.InflightDataRescalingDescriptorUtil.mappings;
 import static org.apache.flink.runtime.checkpoint.InflightDataRescalingDescriptorUtil.set;
@@ -115,15 +117,17 @@ public class DemultiplexingRecordDeserializerTest {
 
             long start = selector.getInputSubtaskIndex() << 4 | selector.getOutputSubtaskIndex();
 
-            final BufferBuilder bufferBuilder = createBufferBuilder(128);
+            MemorySegment memorySegment = allocateUnpooledSegment(128);
+            final BufferBuilder bufferBuilder = createBufferBuilder(memorySegment);
             Buffer buffer = writeLongs(bufferBuilder, start + 1L, start + 2L, start + 3L);
+            bufferBuilder.recycle();
 
             deserializer.select(selector);
             deserializer.setNextBuffer(buffer);
 
             assertEquals(
                     Arrays.asList(start + 1L, start + 2L, start + 3L), readLongs(deserializer));
-            assertTrue(bufferBuilder.getMemorySegment().isFreed());
+            assertTrue(memorySegment.isFreed());
         }
     }
 
@@ -151,9 +155,11 @@ public class DemultiplexingRecordDeserializerTest {
                 deserializer.getVirtualChannelSelectors());
 
         for (int i = 0; i < 100; i++) {
-            final BufferBuilder bufferBuilder = createBufferBuilder(128);
+            MemorySegment memorySegment = allocateUnpooledSegment(128);
+            final BufferBuilder bufferBuilder = createBufferBuilder(memorySegment);
             // add one even and one odd number
             Buffer buffer = writeLongs(bufferBuilder, i, i + 1L);
+            bufferBuilder.recycle();
 
             SubtaskConnectionDescriptor selector =
                     Iterables.get(deserializer.getVirtualChannelSelectors(), i / 10 % 2);
@@ -167,7 +173,7 @@ public class DemultiplexingRecordDeserializerTest {
                 assertEquals(Arrays.asList(i / 2 * 2 + 1L), readLongs(deserializer));
             }
 
-            assertTrue(bufferBuilder.getMemorySegment().isFreed());
+            assertTrue(memorySegment.isFreed());
         }
     }
 
@@ -190,10 +196,12 @@ public class DemultiplexingRecordDeserializerTest {
                         deserializer.getVirtualChannelSelectors().iterator();
                 iterator.hasNext(); ) {
             SubtaskConnectionDescriptor selector = iterator.next();
-            final BufferBuilder bufferBuilder = createBufferBuilder(128);
+            MemorySegment memorySegment = allocateUnpooledSegment(128);
+            final BufferBuilder bufferBuilder = createBufferBuilder(memorySegment);
             final long ts =
                     42L + selector.getInputSubtaskIndex() + selector.getOutputSubtaskIndex();
             Buffer buffer = write(bufferBuilder, new Watermark(ts));
+            bufferBuilder.recycle();
 
             deserializer.select(selector);
             deserializer.setNextBuffer(buffer);
@@ -205,7 +213,7 @@ public class DemultiplexingRecordDeserializerTest {
                 assertEquals(Arrays.asList(new Watermark(42)), read(deserializer));
             }
 
-            assertTrue(bufferBuilder.getMemorySegment().isFreed());
+            assertTrue(memorySegment.isFreed());
         }
     }
 

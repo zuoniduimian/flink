@@ -21,7 +21,6 @@ package org.apache.flink.runtime.io.network.partition;
 import org.apache.flink.core.memory.MemorySegment;
 import org.apache.flink.core.memory.MemorySegmentFactory;
 import org.apache.flink.runtime.io.network.buffer.Buffer;
-import org.apache.flink.runtime.io.network.buffer.BufferBuilder;
 import org.apache.flink.runtime.io.network.buffer.BufferPool;
 import org.apache.flink.runtime.io.network.buffer.NetworkBuffer;
 
@@ -270,14 +269,13 @@ public class PartitionSortedBuffer implements SortBuffer {
         try {
             // blocking request buffers if there is still guaranteed memory
             if (buffers.size() < numGuaranteedBuffers) {
-                return bufferPool.requestBufferBuilderBlocking().getMemorySegment();
+                return bufferPool.requestMemorySegmentBlocking();
             }
         } catch (InterruptedException e) {
             throw new IOException("Interrupted while requesting buffer.");
         }
 
-        BufferBuilder buffer = bufferPool.requestBufferBuilder();
-        return buffer != null ? buffer.getMemorySegment() : null;
+        return bufferPool.requestMemorySegment();
     }
 
     private void updateWriteSegmentIndexAndOffset(int numBytes) {

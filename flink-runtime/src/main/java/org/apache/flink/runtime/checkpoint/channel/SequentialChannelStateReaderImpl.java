@@ -205,9 +205,8 @@ class ChannelStateChunkReader {
                     }
                 }
                 stateHandler.recover(channelInfo, oldSubtaskIndex, bufferWithContext.context);
-            } catch (Exception e) {
+            } finally {
                 bufferWithContext.buffer.recycle();
-                throw e;
             }
         }
     }

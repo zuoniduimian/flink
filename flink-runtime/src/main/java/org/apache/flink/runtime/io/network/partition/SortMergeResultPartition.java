@@ -172,8 +172,7 @@ public class SortMergeResultPartition extends ResultPartition {
         synchronized (lock) {
             try {
                 for (int i = 0; i < numWriteBuffers; ++i) {
-                    MemorySegment segment =
-                            bufferPool.requestBufferBuilderBlocking().getMemorySegment();
+                    MemorySegment segment = bufferPool.requestMemorySegmentBlocking();
                     writeBuffers.add(segment);
                 }
             } catch (InterruptedException exception) {

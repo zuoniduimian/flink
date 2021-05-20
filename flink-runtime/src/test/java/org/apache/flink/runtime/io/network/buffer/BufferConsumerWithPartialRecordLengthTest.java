@@ -148,7 +148,8 @@ public class BufferConsumerWithPartialRecordLengthTest {
 
     private BufferBuilder createBufferBuilder() {
         return new BufferBuilder(
-                MemorySegmentFactory.allocateUnpooledSegment(BUFFER_SIZE),
-                FreeingBufferRecycler.INSTANCE);
+                new NetworkBuffer(
+                        MemorySegmentFactory.allocateUnpooledSegment(BUFFER_SIZE),
+                        FreeingBufferRecycler.INSTANCE));
     }
 }

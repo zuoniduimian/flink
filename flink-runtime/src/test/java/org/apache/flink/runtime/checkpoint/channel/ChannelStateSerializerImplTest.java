@@ -90,8 +90,9 @@ public class ChannelStateSerializerImplTest {
         byte[] data = generateData(100);
         BufferBuilder bufferBuilder =
                 new BufferBuilder(
-                        MemorySegmentFactory.allocateUnpooledSegment(data.length, null),
-                        FreeingBufferRecycler.INSTANCE);
+                        new NetworkBuffer(
+                                MemorySegmentFactory.allocateUnpooledSegment(data.length, null),
+                                FreeingBufferRecycler.INSTANCE));
         BufferConsumer bufferConsumer = bufferBuilder.createBufferConsumer();
 
         new ChannelStateSerializerImpl()

@@ -36,9 +36,10 @@ import java.util.concurrent.LinkedBlockingDeque;
 
 import static org.apache.flink.util.Preconditions.checkArgument;
 
+/** */
 public class TestPooledBufferProvider implements BufferProvider {
 
-    private final BlockingQueue<Buffer> buffers = new LinkedBlockingDeque<>();
+    private final BlockingQueue<MemorySegment> buffers = new LinkedBlockingDeque<>();
 
     private final TestBufferFactory bufferFactory;
 
@@ -57,19 +58,16 @@ public class TestPooledBufferProvider implements BufferProvider {
 
     @Override
     public Buffer requestBuffer() {
-        final Buffer buffer = buffers.poll();
-        if (buffer != null) {
-            return buffer;
-        }
+        MemorySegment memorySegment = requestMemorySegment();
 
-        return bufferFactory.create();
+        return memorySegment == null ? null : new NetworkBuffer(memorySegment, bufferRecycler);
     }
 
     @Override
     public BufferBuilder requestBufferBuilder() {
         Buffer buffer = requestBuffer();
         if (buffer != null) {
-            return new BufferBuilder(buffer.getMemorySegment(), buffer.getRecycler());
+            return new BufferBuilder(buffer);
         }
         return null;
     }
@@ -80,23 +78,14 @@ public class TestPooledBufferProvider implements BufferProvider {
     }
 
     private Buffer requestBufferBlocking() throws InterruptedException {
-        Buffer buffer = buffers.poll();
-        if (buffer != null) {
-            return buffer;
-        }
+        MemorySegment memorySegment = requestMemorySegmentBlocking();
 
-        buffer = bufferFactory.create();
-        if (buffer != null) {
-            return buffer;
-        }
-
-        return buffers.take();
+        return memorySegment == null ? null : new NetworkBuffer(memorySegment, bufferRecycler);
     }
 
     @Override
     public BufferBuilder requestBufferBuilderBlocking() throws InterruptedException {
-        Buffer buffer = requestBufferBlocking();
-        return new BufferBuilder(buffer.getMemorySegment(), buffer.getRecycler());
+        return new BufferBuilder(requestBufferBlocking());
     }
 
     @Override
@@ -116,6 +105,31 @@ public class TestPooledBufferProvider implements BufferProvider {
     }
 
     @Override
+    public MemorySegment requestMemorySegment() {
+        final MemorySegment buffer = buffers.poll();
+        if (buffer != null) {
+            return buffer;
+        }
+
+        return bufferFactory.createMemorySegment();
+    }
+
+    @Override
+    public MemorySegment requestMemorySegmentBlocking() throws InterruptedException {
+        MemorySegment buffer = buffers.poll();
+        if (buffer != null) {
+            return buffer;
+        }
+
+        buffer = bufferFactory.createMemorySegment();
+        if (buffer != null) {
+            return buffer;
+        }
+
+        return buffers.take();
+    }
+
+    @Override
     public CompletableFuture<?> getAvailableFuture() {
         return AVAILABLE;
     }
@@ -132,26 +146,24 @@ public class TestPooledBufferProvider implements BufferProvider {
 
         private final Object listenerRegistrationLock = new Object();
 
-        private final Queue<Buffer> buffers;
+        private final Queue<MemorySegment> buffers;
 
         private final ConcurrentLinkedQueue<BufferListener> registeredListeners =
                 Queues.newConcurrentLinkedQueue();
 
-        public PooledBufferProviderRecycler(Queue<Buffer> buffers) {
+        public PooledBufferProviderRecycler(Queue<MemorySegment> buffers) {
             this.buffers = buffers;
         }
 
         @Override
         public void recycle(MemorySegment segment) {
             synchronized (listenerRegistrationLock) {
-                final Buffer buffer = new NetworkBuffer(segment, this);
-
                 BufferListener listener = registeredListeners.poll();
 
                 if (listener == null) {
-                    buffers.add(buffer);
+                    buffers.add(segment);
                 } else {
-                    listener.notifyBufferAvailable(buffer);
+                    listener.notifyBufferAvailable(new NetworkBuffer(segment, this));
                 }
             }
         }

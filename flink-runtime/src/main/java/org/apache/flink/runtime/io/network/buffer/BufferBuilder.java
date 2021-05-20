@@ -18,7 +18,6 @@
 
 package org.apache.flink.runtime.io.network.buffer;
 
-import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.core.memory.MemorySegment;
 
 import javax.annotation.concurrent.NotThreadSafe;
@@ -36,17 +35,14 @@ import static org.apache.flink.util.Preconditions.checkState;
  */
 @NotThreadSafe
 public class BufferBuilder {
-    private final MemorySegment memorySegment;
-
-    private final BufferRecycler recycler;
+    private final Buffer buffer;
 
     private final SettablePositionMarker positionMarker = new SettablePositionMarker();
 
     private boolean bufferConsumerCreated = false;
 
-    public BufferBuilder(MemorySegment memorySegment, BufferRecycler recycler) {
-        this.memorySegment = checkNotNull(memorySegment);
-        this.recycler = checkNotNull(recycler);
+    public BufferBuilder(Buffer buffer) {
+        this.buffer = checkNotNull(buffer);
     }
 
     /**
@@ -73,8 +69,9 @@ public class BufferBuilder {
     private BufferConsumer createBufferConsumer(int currentReaderPosition) {
         checkState(
                 !bufferConsumerCreated, "Two BufferConsumer shouldn't exist for one BufferBuilder");
+        checkState(!buffer.isRecycled(), "Buffer is already recycled");
         bufferConsumerCreated = true;
-        return new BufferConsumer(memorySegment, recycler, positionMarker, currentReaderPosition);
+        return new BufferConsumer(buffer.retainBuffer(), positionMarker, currentReaderPosition);
     }
 
     /** Same as {@link #append(ByteBuffer)} but additionally {@link #commit()} the appending. */
@@ -93,11 +90,17 @@ public class BufferBuilder {
     public int append(ByteBuffer source) {
         checkState(!isFinished());
 
+        int limit = source.limit();
         int needed = source.remaining();
         int available = getMaxCapacity() - positionMarker.getCached();
         int toCopy = Math.min(needed, available);
 
-        memorySegment.put(positionMarker.getCached(), source, toCopy);
+        source.limit(source.position() + toCopy);
+
+        buffer.asByteBuf().writeBytes(source);
+
+        source.limit(limit);
+
         positionMarker.move(toCopy);
         return toCopy;
     }
@@ -144,21 +147,11 @@ public class BufferBuilder {
     }
 
     public int getMaxCapacity() {
-        return memorySegment.size();
-    }
-
-    @VisibleForTesting
-    public BufferRecycler getRecycler() {
-        return recycler;
+        return buffer.getMaxCapacity();
     }
 
     public void recycle() {
-        recycler.recycle(memorySegment);
-    }
-
-    @VisibleForTesting
-    public MemorySegment getMemorySegment() {
-        return memorySegment;
+        buffer.recycleBuffer();
     }
 
     /**

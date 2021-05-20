@@ -26,6 +26,7 @@ import org.apache.flink.runtime.io.network.buffer.Buffer;
 import org.apache.flink.runtime.io.network.buffer.BufferBuilder;
 import org.apache.flink.runtime.io.network.buffer.BufferConsumer;
 import org.apache.flink.runtime.io.network.buffer.FreeingBufferRecycler;
+import org.apache.flink.runtime.io.network.buffer.NetworkBuffer;
 import org.apache.flink.runtime.io.network.serialization.types.LargeObjectType;
 import org.apache.flink.runtime.io.network.util.DeserializationUtils;
 import org.apache.flink.testutils.serialization.types.IntType;
@@ -294,9 +295,10 @@ public class SpanningRecordSerializationTest extends TestLogger {
     private static Buffer appendLeftOverBytes(Buffer buffer, byte[] leftOverBytes) {
         BufferBuilder bufferBuilder =
                 new BufferBuilder(
-                        MemorySegmentFactory.allocateUnpooledSegment(
-                                buffer.readableBytes() + leftOverBytes.length),
-                        FreeingBufferRecycler.INSTANCE);
+                        new NetworkBuffer(
+                                MemorySegmentFactory.allocateUnpooledSegment(
+                                        buffer.readableBytes() + leftOverBytes.length),
+                                FreeingBufferRecycler.INSTANCE));
         try (BufferConsumer bufferConsumer = bufferBuilder.createBufferConsumer()) {
             bufferBuilder.append(buffer.getNioBufferReadable());
             bufferBuilder.appendAndCommit(ByteBuffer.wrap(leftOverBytes));

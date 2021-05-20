@@ -38,11 +38,17 @@ public class UnpooledBufferPool implements BufferPool {
 
     @Override
     public BufferBuilder requestBufferBuilder() {
-        return new BufferBuilder(requestMemorySegment(), this);
+        return new BufferBuilder(new NetworkBuffer(requestMemorySegment(), this));
     }
 
-    private MemorySegment requestMemorySegment() {
+    @Override
+    public MemorySegment requestMemorySegment() {
         return MemorySegmentFactory.allocateUnpooledOffHeapMemory(SEGMENT_SIZE, null);
+    }
+
+    @Override
+    public MemorySegment requestMemorySegmentBlocking() throws InterruptedException {
+        return requestMemorySegment();
     }
 
     @Override
