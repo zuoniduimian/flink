@@ -69,9 +69,8 @@ public class BufferBuilder {
     private BufferConsumer createBufferConsumer(int currentReaderPosition) {
         checkState(
                 !bufferConsumerCreated, "Two BufferConsumer shouldn't exist for one BufferBuilder");
-        checkState(!buffer.isRecycled(), "Buffer is already recycled");
         bufferConsumerCreated = true;
-        return new BufferConsumer(buffer.retainBuffer(), positionMarker, currentReaderPosition);
+        return new BufferConsumer(buffer, positionMarker, currentReaderPosition);
     }
 
     /** Same as {@link #append(ByteBuffer)} but additionally {@link #commit()} the appending. */
@@ -151,7 +150,9 @@ public class BufferBuilder {
     }
 
     public void recycle() {
-        buffer.recycleBuffer();
+        if (!bufferConsumerCreated) {
+            buffer.recycleBuffer();
+        }
     }
 
     /**
