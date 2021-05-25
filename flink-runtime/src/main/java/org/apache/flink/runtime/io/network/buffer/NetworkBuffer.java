@@ -305,6 +305,16 @@ public class NetworkBuffer extends AbstractReferenceCountedByteBuf implements Bu
     }
 
     @Override
+    public ByteBuf writeBytes(ByteBuffer src) {
+        int needed = src.remaining();
+        int available = getMaxCapacity() - writerIndex();
+        int toCopy = Math.min(needed, available);
+        memorySegment.put(writerIndex(), src, toCopy);
+        writerIndex(writerIndex() + toCopy);
+        return this;
+    }
+
+    @Override
     public int getSize() {
         return writerIndex();
     }

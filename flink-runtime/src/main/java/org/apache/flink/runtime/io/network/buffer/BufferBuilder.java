@@ -36,6 +36,7 @@ import static org.apache.flink.util.Preconditions.checkState;
 @NotThreadSafe
 public class BufferBuilder {
     private final Buffer buffer;
+    private final MemorySegment memorySegment;
 
     private final SettablePositionMarker positionMarker = new SettablePositionMarker();
 
@@ -43,6 +44,7 @@ public class BufferBuilder {
 
     public BufferBuilder(Buffer buffer) {
         this.buffer = checkNotNull(buffer);
+        this.memorySegment = buffer.getMemorySegment();
     }
 
     /**
@@ -70,7 +72,7 @@ public class BufferBuilder {
         checkState(
                 !bufferConsumerCreated, "Two BufferConsumer shouldn't exist for one BufferBuilder");
         bufferConsumerCreated = true;
-        return new BufferConsumer(buffer, positionMarker, currentReaderPosition);
+        return new BufferConsumer(buffer.retainBuffer(), positionMarker, currentReaderPosition);
     }
 
     /** Same as {@link #append(ByteBuffer)} but additionally {@link #commit()} the appending. */
@@ -89,17 +91,20 @@ public class BufferBuilder {
     public int append(ByteBuffer source) {
         checkState(!isFinished());
 
-        int limit = source.limit();
-        int needed = source.remaining();
-        int available = getMaxCapacity() - positionMarker.getCached();
-        int toCopy = Math.min(needed, available);
+        //        int limit = source.limit();
+        //        int needed = source.remaining();
+        //        int available = getMaxCapacity() - positionMarker.getCached();
+        //        int toCopy = Math.min(needed, available);
 
-        source.limit(source.position() + toCopy);
+        //        memorySegment.put(positionMarker.getCached(), source, toCopy);
+        //        source.limit(source.position() + toCopy);
+        int pos = source.position();
 
         buffer.asByteBuf().writeBytes(source);
 
-        source.limit(limit);
+        //        source.limit(limit);
 
+        int toCopy = source.position() - pos;
         positionMarker.move(toCopy);
         return toCopy;
     }
@@ -150,9 +155,9 @@ public class BufferBuilder {
     }
 
     public void recycle() {
-        if (!bufferConsumerCreated) {
-            buffer.recycleBuffer();
-        }
+        //        if (!bufferConsumerCreated) {
+        buffer.recycleBuffer();
+        //        }
     }
 
     /**
