@@ -20,6 +20,8 @@ package org.apache.flink.runtime.io.network.buffer;
 
 import org.apache.flink.core.memory.MemorySegment;
 
+import org.apache.flink.shaded.netty4.io.netty.buffer.ByteBuf;
+
 import javax.annotation.concurrent.NotThreadSafe;
 import javax.annotation.concurrent.ThreadSafe;
 
@@ -37,14 +39,17 @@ import static org.apache.flink.util.Preconditions.checkState;
 public class BufferBuilder {
     private final Buffer buffer;
     private final MemorySegment memorySegment;
+    private final NetworkBuffer byteBuf;
 
-    private final SettablePositionMarker positionMarker = new SettablePositionMarker();
+    private final SettablePositionMarker positionMarker;
 
     private boolean bufferConsumerCreated = false;
 
     public BufferBuilder(Buffer buffer) {
         this.buffer = checkNotNull(buffer);
         this.memorySegment = buffer.getMemorySegment();
+        byteBuf = (NetworkBuffer) buffer;
+        positionMarker = new SettablePositionMarker(buffer.asByteBuf());
     }
 
     /**
@@ -91,21 +96,17 @@ public class BufferBuilder {
     public int append(ByteBuffer source) {
         checkState(!isFinished());
 
-        //        int limit = source.limit();
-        //        int needed = source.remaining();
-        //        int available = getMaxCapacity() - positionMarker.getCached();
-        //        int toCopy = Math.min(needed, available);
+        int limit = source.limit();
 
-        //        memorySegment.put(positionMarker.getCached(), source, toCopy);
-        //        source.limit(source.position() + toCopy);
-        int pos = source.position();
+        int needed = source.remaining();
+        int writerIndex = positionMarker.getCached();
+        int available = getMaxCapacity() - writerIndex;
+        int toCopy = Math.min(needed, available);
+        source.limit(source.position() + toCopy);
 
-        buffer.asByteBuf().writeBytes(source);
+        byteBuf.writeBytes(source);
 
-        //        source.limit(limit);
-
-        int toCopy = source.position() - pos;
-        positionMarker.move(toCopy);
+        source.limit(limit);
         return toCopy;
     }
 
@@ -128,7 +129,7 @@ public class BufferBuilder {
      */
     public int finish() {
         int writtenBytes = positionMarker.markFinished();
-        commit();
+        //        commit();
         return writtenBytes;
     }
 
@@ -194,11 +195,16 @@ public class BufferBuilder {
      */
     static class SettablePositionMarker implements PositionMarker {
         private volatile int position = 0;
+        private final ByteBuf byteBuf;
 
         /**
          * Locally cached value of volatile {@code position} to avoid unnecessary volatile accesses.
          */
         private int cachedPosition = 0;
+
+        SettablePositionMarker(ByteBuf byteBuf) {
+            this.byteBuf = byteBuf;
+        }
 
         @Override
         public int get() {
@@ -210,7 +216,7 @@ public class BufferBuilder {
         }
 
         public int getCached() {
-            return PositionMarker.getAbsolute(cachedPosition);
+            return byteBuf.writerIndex();
         }
 
         /**
@@ -225,6 +231,7 @@ public class BufferBuilder {
                 newValue = FINISHED_EMPTY;
             }
             set(newValue);
+            position = newValue;
             return currentPosition;
         }
 
@@ -237,7 +244,7 @@ public class BufferBuilder {
         }
 
         public void commit() {
-            position = cachedPosition;
+            position = byteBuf.writerIndex();
         }
     }
 }

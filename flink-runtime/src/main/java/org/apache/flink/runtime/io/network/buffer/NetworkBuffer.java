@@ -305,16 +305,6 @@ public class NetworkBuffer extends AbstractReferenceCountedByteBuf implements Bu
     }
 
     @Override
-    public ByteBuf writeBytes(ByteBuffer src) {
-        int needed = src.remaining();
-        int available = getMaxCapacity() - writerIndex();
-        int toCopy = Math.min(needed, available);
-        memorySegment.put(writerIndex(), src, toCopy);
-        writerIndex(writerIndex() + toCopy);
-        return this;
-    }
-
-    @Override
     public int getSize() {
         return writerIndex();
     }
@@ -462,13 +452,26 @@ public class NetworkBuffer extends AbstractReferenceCountedByteBuf implements Bu
         return this;
     }
 
+    public int write(ByteBuffer src) {
+        int needed = src.remaining();
+        int writerIndex = writerIndex();
+        int available = capacity() - writerIndex;
+        int toCopy = Math.min(needed, available);
+        checkIndex(writerIndex, toCopy);
+
+        memorySegment.put(writerIndex, src, toCopy);
+
+        writerIndex(writerIndex + toCopy);
+
+        return toCopy;
+    }
+
     @Override
     public ByteBuf setBytes(int index, ByteBuffer src) {
         // adapted from UnpooledDirectByteBuf:
         checkIndex(index, src.remaining());
 
-        ByteBuffer tmpBuf = memorySegment.wrap(index, src.remaining());
-        tmpBuf.put(src);
+        memorySegment.put(index, src, src.remaining());
         return this;
     }
 
